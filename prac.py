@@ -1,5 +1,5 @@
 from datetime import datetime
-from flask import Flask, request, jsonify
+from flask import Flask, request, render_template
 from flask_sqlalchemy import SQLAlchemy
 import random
 
@@ -29,6 +29,14 @@ class Segments(db.Model):
     description = db.Column(db.Text, nullable=True)
     users = db.relationship('Users', secondary='user_segments', back_populates='segments')
 
+# отображение все пользователей и сегментов для удобства
+@app.route('/')
+def index():
+    users = Users.query.all()
+    segments = Segments.query.all()
+    return render_template('index.html', users=users, segments=segments)
+
+# добавить пользователя
 @app.route('/user/add', methods=['POST'])
 def add_user():
     data = request.json
@@ -65,6 +73,7 @@ def add_user():
 
     return {"message": "User added", "user_id": user.id}, 201
 
+# добавить сегмент
 @app.route('/segment/add', methods=['POST'])
 def add_segment():
     data = request.json
@@ -79,6 +88,7 @@ def add_segment():
     db.session.commit()
     return {"message": "Segment added", "segment_id": segment.id}, 201
 
+# изменить существующий сегмент
 @app.route('/segment/change/<int:segment_id>', methods=['PUT'])
 def update_segment(segment_id):
     segment = Segments.query.get(segment_id)
@@ -92,6 +102,7 @@ def update_segment(segment_id):
     db.session.commit()
     return {"message": "Segment updated"}
 
+# удалить сегмент
 @app.route('/segment/delete/<int:segment_id>', methods=['DELETE'])
 def delete_segment(segment_id):
     segment = Segments.query.get(segment_id)
@@ -101,6 +112,7 @@ def delete_segment(segment_id):
     db.session.commit()
     return {"message": "Segment deleted"}
 
+# добавить сегмент списку пользователей
 @app.route('/segment/add_users_by_ids/<int:segment_id>', methods=['POST'])
 def add_segment_to_users_by_ids(segment_id):
     segment = Segments.query.get(segment_id)
@@ -122,6 +134,7 @@ def add_segment_to_users_by_ids(segment_id):
     db.session.commit()
     return {"message": f"Segment {segment_id} added to {added_count} users by IDs"}, 200
 
+# добавить сегмент заданному проценту пользователей
 @app.route('/segment/add_users_by_percent/<int:segment_id>', methods=['POST'])
 def add_segment_to_users_by_percent(segment_id):
     segment = Segments.query.get(segment_id)
@@ -146,32 +159,7 @@ def add_segment_to_users_by_percent(segment_id):
     db.session.commit()
     return {"message": f"Segment {segment_id} added randomly to {added_count} users"}, 200
 
-@app.route('/segment/add_users_by_param/<int:segment_id>', methods=['POST'])
-def add_segment_to_users_by_param(segment_id):
-    segment = Segments.query.get(segment_id)
-    if not segment:
-        return {"error": "Segment not found"}, 404
-
-    param_name = request.json.get('param_name')
-    param_value = request.json.get('param_value')
-
-    if not param_name or param_value is None:
-        return {"error": "param_name and param_value are required"}, 400
-
-    if not hasattr(Users, param_name):
-        return {"error": f"User has no attribute '{param_name}'"}, 400
-
-    users = Users.query.filter(getattr(Users, param_name) == param_value).all()
-    added_count = 0
-    for user in users:
-        assoc = UserSegments.query.filter_by(user_id=user.id, segment_id=segment.id).first()
-        if not assoc:
-            assoc = UserSegments(user_id=user.id, segment_id=segment.id)
-            db.session.add(assoc)
-            added_count += 1
-    db.session.commit()
-    return {"message": f"Segment {segment_id} added to {added_count} users where {param_name}='{param_value}'"}, 200
-
+# получить сегменты пользователя
 @app.route('/user/<int:user_id>/segments', methods=['GET'])
 def get_segments_of_user(user_id):
     user = Users.query.get(user_id)
@@ -181,37 +169,9 @@ def get_segments_of_user(user_id):
     segments = [{"id": seg.id, "name": seg.name, "description": seg.description} for seg in user.segments]
     return {"user_id": user_id, "segments": segments}
 
-@app.route('/user/<int:user_id>', methods=['GET'])
-def get_user_by_id(user_id):
-    user = Users.query.get(user_id)
-    if not user:
-        return {"error": "User not found"}, 404
-
-    user_data = {
-        "id": user.id,
-        "email": user.email,
-        "last_name": user.last_name,
-        "first_name": user.first_name,
-        "middle_name": user.middle_name,
-        "birth_date": user.birth_date.isoformat() if user.birth_date else None,
-        "gender": user.gender
-    }
-    return {"user": user_data}
-
-@app.route('/segment/<int:segment_id>', methods=['GET'])
-def get_segment_by_id(segment_id):
-    segment = Segments.query.get(segment_id)
-    if not segment:
-        return {"error": "Segment not found"}, 404
-
-    segment_data = {
-        "id": segment.id,
-        "name": segment.name,
-        "description": segment.description
-    }
-    return {"segment": segment_data}
-
 if __name__ == '__main__':
     with app.app_context():
         db.create_all()
     app.run(debug=True)
+
+#проверить работу можно по адресу http://130.193.56.120/user/2/segments
