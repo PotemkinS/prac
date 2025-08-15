@@ -16,7 +16,7 @@ class UserSegments(db.Model):
 
 class Users(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    email = db.Column(db.String, unique=True, nullable=False)  # Уникальное поле
+    email = db.Column(db.String, unique=True, nullable=False)
     last_name = db.Column(db.String, nullable=False)
     first_name = db.Column(db.String, nullable=False)
     middle_name = db.Column(db.String, nullable=True)
@@ -27,11 +27,10 @@ class Users(db.Model):
 
 class Segments(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    name = db.Column(db.String, unique=True, nullable=False)    # Уникальное поле
+    name = db.Column(db.String, unique=True, nullable=False)
     description = db.Column(db.Text, nullable=True)
     users = db.relationship('Users', secondary='user_segments', back_populates='segments')
 
-# отображение все пользователей и сегментов для удобства
 @app.route('/')
 def index():
     users = Users.query.all()
@@ -64,29 +63,29 @@ def validate_segment_data(data):
 @app.route('/user/add', methods=['POST'])
 def add_user():
     data = request.get_json()
-    errors = validate_user_data(data)
-    if errors:
-        return jsonify({"ошибки": errors}), 400
-
-    existing = Users.query.filter_by(email=data['email']).first()
-    if existing:
-        return jsonify({"ошибка": "Пользователь с таким email уже существует"}), 400
+    birth_date = None
+    if data.get('birth_date'):
+        try:
+            birth_date = datetime.strptime(data['birth_date'], "%Y-%m-%d").date()
+        except ValueError:
+            return jsonify({"ошибка": "Неверный формат даты. Ожидается YYYY-MM-DD."}), 400
 
     user = Users(
         email=data['email'],
         last_name=data['last_name'],
         first_name=data['first_name'],
         middle_name=data.get('middle_name'),
-        birth_date=data.get('birth_date'),
+        birth_date=birth_date,
         gender=data.get('gender')
     )
+
     try:
         db.session.add(user)
         db.session.commit()
         return jsonify({"сообщение": "Пользователь успешно добавлен", "user_id": user.id}), 201
     except IntegrityError:
         db.session.rollback()
-        return jsonify({"ошибка": "Нарушение уникальности. Пользователь с таким email уже существует."}), 400
+        return jsonify({"ошибка": "Пользователь с таким email уже существует"}), 400
 
 @app.route('/segment/add', methods=['POST'])
 def add_segment():
@@ -135,7 +134,6 @@ def update_segment(id):
         db.session.rollback()
         return jsonify({"ошибка": "Ошибка обновления сегмента: нарушение уникальности имени"}), 400
 
-# удалить сегмент
 @app.route('/segment/delete/<int:segment_id>', methods=['DELETE'])
 def delete_segment(segment_id):
     segment = Segments.query.get(segment_id)
@@ -145,7 +143,6 @@ def delete_segment(segment_id):
     db.session.commit()
     return {"message": "Segment deleted"}
 
-# добавить сегмент списку пользователей
 @app.route('/segment/add_users_by_ids/<int:segment_id>', methods=['POST'])
 def add_segment_to_users_by_ids(segment_id):
     segment = Segments.query.get(segment_id)
@@ -167,7 +164,6 @@ def add_segment_to_users_by_ids(segment_id):
     db.session.commit()
     return {"message": f"Segment {segment_id} added to {added_count} users by IDs"}, 200
 
-# добавить сегмент заданному проценту пользователей
 @app.route('/segment/add_users_by_percent/<int:segment_id>', methods=['POST'])
 def add_segment_to_users_by_percent(segment_id):
     segment = Segments.query.get(segment_id)
@@ -192,7 +188,6 @@ def add_segment_to_users_by_percent(segment_id):
     db.session.commit()
     return {"message": f"Segment {segment_id} added randomly to {added_count} users"}, 200
 
-# получить сегменты пользователя
 @app.route('/user/<int:user_id>/segments', methods=['GET'])
 def get_segments_of_user(user_id):
     user = Users.query.get(user_id)
@@ -207,4 +202,4 @@ if __name__ == '__main__':
         db.create_all()
     app.run(debug=True)
 
-#проверить работу можно по адресу http://130.193.56.120/user/2/segments
+#проверить работу можно по адресу http://84.252.133.40
