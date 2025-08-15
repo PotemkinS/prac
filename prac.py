@@ -1,5 +1,6 @@
 from datetime import datetime
-from flask import Flask, request, render_template
+from sqlalchemy.exc import IntegrityError
+from flask import Flask, request, render_template, jsonify
 from flask_sqlalchemy import SQLAlchemy
 import random
 
@@ -15,7 +16,7 @@ class UserSegments(db.Model):
 
 class Users(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    email = db.Column(db.String, unique=True, nullable=False)
+    email = db.Column(db.String, unique=True, nullable=False)  # Уникальное поле
     last_name = db.Column(db.String, nullable=False)
     first_name = db.Column(db.String, nullable=False)
     middle_name = db.Column(db.String, nullable=True)
@@ -23,9 +24,10 @@ class Users(db.Model):
     gender = db.Column(db.String, nullable=True)
     segments = db.relationship('Segments', secondary='user_segments', back_populates='users')
 
+
 class Segments(db.Model):
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
-    name = db.Column(db.String, nullable=False)
+    name = db.Column(db.String, unique=True, nullable=False)    # Уникальное поле
     description = db.Column(db.Text, nullable=True)
     users = db.relationship('Users', secondary='user_segments', back_populates='segments')
 
@@ -36,71 +38,102 @@ def index():
     segments = Segments.query.all()
     return render_template('index.html', users=users, segments=segments)
 
-# добавить пользователя
+def validate_user_data(data):
+    errors = []
+    email = data.get("email")
+    last_name = data.get("last_name")
+    first_name = data.get("first_name")
+
+    if not email or "@" not in email:
+        errors.append("Некорректный email")
+    if not last_name:
+        errors.append("Фамилия обязательна")
+    if not first_name:
+        errors.append("Имя обязательно")
+
+    return errors
+
+def validate_segment_data(data):
+    errors = []
+    name = data.get("name")
+    if not name:
+        errors.append("Название сегмента обязательно")
+
+    return errors
+
 @app.route('/user/add', methods=['POST'])
 def add_user():
-    data = request.json
-    email = data.get('email')
-    last_name = data.get('last_name')
-    first_name = data.get('first_name')
-    middle_name = data.get('middle_name')
-    birth_date_str = data.get('birth_date')
-    gender = data.get('gender')
+    data = request.get_json()
+    errors = validate_user_data(data)
+    if errors:
+        return jsonify({"ошибки": errors}), 400
 
-    if not email or not last_name or not first_name:
-        return {"error": "email, last_name and first_name are required"}, 400
-
-    birth_date = None
-    if birth_date_str:
-        try:
-            birth_date = datetime.strptime(birth_date_str, '%Y-%m-%d').date()
-        except ValueError:
-            return {"error": "birth_date must be in YYYY-MM-DD format"}, 400
-
-    if Users.query.filter_by(email=email).first():
-        return {"error": "User with this email already exists"}, 400
+    existing = Users.query.filter_by(email=data['email']).first()
+    if existing:
+        return jsonify({"ошибка": "Пользователь с таким email уже существует"}), 400
 
     user = Users(
-        email=email,
-        last_name=last_name,
-        first_name=first_name,
-        middle_name=middle_name,
-        birth_date=birth_date,
-        gender=gender
+        email=data['email'],
+        last_name=data['last_name'],
+        first_name=data['first_name'],
+        middle_name=data.get('middle_name'),
+        birth_date=data.get('birth_date'),
+        gender=data.get('gender')
     )
-    db.session.add(user)
-    db.session.commit()
+    try:
+        db.session.add(user)
+        db.session.commit()
+        return jsonify({"сообщение": "Пользователь успешно добавлен", "user_id": user.id}), 201
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"ошибка": "Нарушение уникальности. Пользователь с таким email уже существует."}), 400
 
-    return {"message": "User added", "user_id": user.id}, 201
-
-# добавить сегмент
 @app.route('/segment/add', methods=['POST'])
 def add_segment():
-    data = request.json
-    name = data.get('name')
-    description = data.get('description')
+    data = request.get_json()
+    errors = validate_segment_data(data)
+    if errors:
+        return jsonify({"ошибки": errors}), 400
 
-    if not name:
-        return {"error": "name is required"}, 400
+    existing = Segments.query.filter_by(name=data['name']).first()
+    if existing:
+        return jsonify({"ошибка": "Сегмент с таким именем уже существует"}), 400
 
-    segment = Segments(name=name, description=description)
-    db.session.add(segment)
-    db.session.commit()
-    return {"message": "Segment added", "segment_id": segment.id}, 201
+    segment = Segments(name=data['name'], description=data.get('description'))
+    try:
+        db.session.add(segment)
+        db.session.commit()
+        return jsonify({"сообщение": "Сегмент успешно добавлен", "segment_id": segment.id}), 201
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"ошибка": "Нарушение уникальности. Сегмент с таким именем уже существует."}), 400
+
 
 # изменить существующий сегмент
-@app.route('/segment/change/<int:segment_id>', methods=['PUT'])
-def update_segment(segment_id):
-    segment = Segments.query.get(segment_id)
+@app.route('/segment/update/<int:id>', methods=['PUT'])
+def update_segment(id):
+    data = request.get_json()
+    segment = Segments.query.get(id)
     if not segment:
-        return {"error": "Segment not found"}, 404
+        return jsonify({"ошибка": "Сегмент не найден"}), 404
 
-    data = request.json
-    segment.name = data.get('name', segment.name)
-    if 'description' in data:
-        segment.description = data['description']
-    db.session.commit()
-    return {"message": "Segment updated"}
+    new_name = data.get('name')
+    if not new_name:
+        return jsonify({"ошибка": "Название сегмента обязательно"}), 400
+    
+    existing = Segments.query.filter(Segments.name == new_name, Segments.id != id).first()
+    if existing:
+        return jsonify({"ошибка": "Сегмент с таким именем уже существует"}), 400
+
+    segment.name = new_name
+    segment.description = data.get('description', segment.description)
+
+    try:
+        db.session.commit()
+        return jsonify({"сообщение": "Сегмент успешно обновлен"}), 200
+    except IntegrityError:
+        db.session.rollback()
+        return jsonify({"ошибка": "Ошибка обновления сегмента: нарушение уникальности имени"}), 400
 
 # удалить сегмент
 @app.route('/segment/delete/<int:segment_id>', methods=['DELETE'])
