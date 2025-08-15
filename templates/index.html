@@ -9,15 +9,16 @@
         }
         .container {
             display: flex;
-            gap: 50px;
+            gap: 30px;
             padding: 20px;
         }
         .column {
             flex: 1;
-            max-width: 45%;
+            max-width: 30%;
             border: 1px solid #ccc;
             padding: 15px;
             border-radius: 5px;
+            overflow-x: auto;
         }
         h2 {
             text-align: center;
@@ -25,6 +26,8 @@
         table {
             width: 100%;
             border-collapse: collapse;
+            table-layout: fixed;
+            word-wrap: break-word;
         }
         th, td {
             border: 1px solid #888;
@@ -33,6 +36,9 @@
         }
         th {
             background-color: #eee;
+        }
+        td.segments {
+            max-width: 200px;
         }
     </style>
 </head>
@@ -77,6 +83,36 @@
                         <td>{{ segment.id }}</td>
                         <td>{{ segment.name }}</td>
                         <td>{{ segment.description or '' }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
+        <div class="column">
+            <h2>Пользователи и их сегменты</h2>
+            <table>
+                <thead>
+                    <tr>
+                        <th>Пользователь</th>
+                        <th>Сегменты</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for user in users %}
+                    <tr>
+                        <td>{{ user.last_name }} {{ user.first_name }} {{ user.middle_name or '' }}</td>
+                        <td class="segments">
+                            {% if user.segments %}
+                                <ul>
+                                {% for seg in user.segments %}
+                                    <li>{{ seg.name }}</li>
+                                {% endfor %}
+                                </ul>
+                            {% else %}
+                                Нет сегментов
+                            {% endif %}
+                        </td>
                     </tr>
                     {% endfor %}
                 </tbody>
